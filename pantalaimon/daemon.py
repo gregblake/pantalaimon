@@ -793,6 +793,33 @@ class ProxyDaemon:
             body=await response.read(),
         )
 
+    async def invite(self, request):
+        access_token = self.get_access_token(request)
+
+        if not access_token:
+            return self._missing_token
+
+        client = await self._find_client(access_token)
+        if not client:
+            return self._unknown_token
+
+        try:
+            content = await request.json()
+        except (JSONDecodeError, ContentTypeError):
+            return self._not_json
+
+        room_id = request.match_info["room_id"]
+        user_id = content["user_id"]
+
+        response = await client.room_invite(room_id, user_id)
+
+        return web.Response(
+            status=response.transport_response.status,
+            content_type=response.transport_response.content_type,
+            headers=CORS_HEADERS,
+            body=await response.transport_response.read(),
+        )
+
     async def messages(self, request):
         access_token = self.get_access_token(request)
 
