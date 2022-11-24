@@ -465,6 +465,7 @@ class ProxyDaemon:
         session=None,  # type: aiohttp.ClientSession
         token=None,  # type: str
         use_raw_path=True,  # type: bool
+        allow_redirects=True,  # type: bool
     ):
         # type: (...) -> aiohttp.ClientResponse
         """Forward the given request to our configured homeserver.
@@ -483,6 +484,8 @@ class ProxyDaemon:
             request or should we use the path and re-encode it. Some may need
             their filters to be sanitized, this requires the parsed version of
             the path, otherwise we leave the path as is.
+            allow_redirects (bool, optional): If set to False, do not follow
+                redirects.
         """
         if not session:
             if not self.default_session:
@@ -517,6 +520,7 @@ class ProxyDaemon:
             data=data,
             params=params,
             headers=headers,
+            allow_redirects=allow_redirects,
             proxy=self.proxy,
             ssl=self.ssl,
         )
@@ -695,6 +699,17 @@ class ProxyDaemon:
             headers=CORS_HEADERS,
             body=await response.read(),
         )
+
+    async def oidc(self, request):
+        try:
+            response = await self.forward_request(
+                request, use_raw_path=False, allow_redirects=False
+            )
+            location = response.headers["Location"]
+            logger.debug(f"Redirecting to {location}")
+            raise web.HTTPFound(location)
+        except ClientConnectionError as e:
+            return web.Response(status=500, text=str(e))
 
     @property
     def _missing_token(self):
