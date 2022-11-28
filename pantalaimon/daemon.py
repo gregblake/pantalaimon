@@ -576,7 +576,7 @@ class ProxyDaemon:
         return user
 
     async def start_pan_client(
-        self, access_token, user, user_id, password, device_id=None
+        self, access_token, user_id, password, device_id=None, token=None
     ):
         client = ClientInfo(user_id, access_token)
         self.client_info[access_token] = client
@@ -603,18 +603,18 @@ class ProxyDaemon:
             media_info=self.media_info,
         )
 
-        if password == "":
+        if password is None and token is None:
             if device_id is None:
                 logger.warn(
                     "Empty password provided and device_id was also None, not "
                     "starting background sync client "
                 )
                 return
-            # If password is blank, we cannot login normally and must
+            # If there is no password or token, we cannot login normally and must
             # fall back to using the provided device_id.
             pan_client.restore_login(user_id, device_id, access_token)
         else:
-            response = await pan_client.login(password, "pantalaimon")
+            response = await pan_client.login(password, "pantalaimon", token=token)
 
             if not isinstance(response, LoginResponse):
                 await pan_client.close()
@@ -664,8 +664,12 @@ class ProxyDaemon:
                 status=500,
             )
 
+        type = body.get("type")
+        logger.debug(f"Executing {type} login")
+
         user = self._get_login_user(body)
-        password = body.get("password", "")
+        password = body.get("password")
+        token = body.get("token")
 
         logger.info(f"New user logging in: {user}")
 
@@ -686,11 +690,11 @@ class ProxyDaemon:
 
             if user_id and access_token:
                 logger.info(
-                    f"User: {user} successfully logged in, starting "
+                    f"User: {user_id} successfully logged in, starting "
                     f"a background sync client."
                 )
                 await self.start_pan_client(
-                    access_token, user, user_id, password, device_id
+                    access_token, user_id, password, device_id, token=token
                 )
 
         return web.Response(
