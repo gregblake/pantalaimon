@@ -466,6 +466,7 @@ class ProxyDaemon:
         token=None,  # type: str
         use_raw_path=True,  # type: bool
         allow_redirects=True,  # type: bool
+        preserve_host=False,  # type: bool
     ):
         # type: (...) -> aiohttp.ClientResponse
         """Forward the given request to our configured homeserver.
@@ -486,6 +487,9 @@ class ProxyDaemon:
             the path, otherwise we leave the path as is.
             allow_redirects (bool, optional): If set to False, do not follow
                 redirects.
+            preserve_host (bool, optional): If set to True, do not delete Host
+                header before forwarding request. Required for OIDC
+                authentication through multiple reverse proxies.
         """
         if not session:
             if not self.default_session:
@@ -498,7 +502,9 @@ class ProxyDaemon:
         method = request.method
 
         headers = CIMultiDict(request.headers)
-        headers.pop("Host", None)
+
+        if not preserve_host:
+            headers.pop("Host", None)
 
         params = params or CIMultiDict(request.query)
 
@@ -707,7 +713,7 @@ class ProxyDaemon:
     async def oidc(self, request):
         try:
             response = await self.forward_request(
-                request, use_raw_path=False, allow_redirects=False
+                request, use_raw_path=False, allow_redirects=False, preserve_host=True
             )
             location = response.headers["Location"]
             logger.debug(f"Redirecting to {location}")
