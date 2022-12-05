@@ -835,6 +835,9 @@ class PanClient(AsyncClient):
             )
 
             if isinstance(decrypted_event, RoomEncryptedMedia):
+                # Clients like Element will attempt to decrypt the file again
+                # if content.file is present in the metadata.
+                decrypted_event.source["content"].pop("file", None)
                 self.store_event_media(decrypted_event)
 
                 decrypted_event.source["content"]["url"] = decrypted_event.url
