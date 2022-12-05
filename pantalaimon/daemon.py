@@ -964,20 +964,24 @@ class ProxyDaemon:
                     status=500,
                 )
 
+        msgtype = request.match_info["event_type"]
+
+        # Do not encrypt a message that is already encrypted.
+        if msgtype == "m.room.encrypted":
+            encrypt = False
+
         # Don't encrypt reactions for now - they are weird and clients
         # need to support them like this.
         # TODO: Fix when MSC1849 is fully supported by clients.
-        if request.match_info["event_type"] == "m.reaction":
+        if msgtype == "m.reaction":
             encrypt = False
-
-        msgtype = request.match_info["event_type"]
 
         try:
             content = await request.json()
         except (JSONDecodeError, ContentTypeError):
             return self._not_json
 
-        # The room isn't encrypted just forward the message.
+        # Just forward the message.
         if not encrypt:
             content_msgtype = content.get("msgtype")
             if (
