@@ -465,6 +465,8 @@ class ProxyDaemon:
         session=None,  # type: aiohttp.ClientSession
         token=None,  # type: str
         use_raw_path=True,  # type: bool
+        allow_redirects=True,  # type: bool
+        preserve_host=False,  # type: bool
     ):
         # type: (...) -> aiohttp.ClientResponse
         """Forward the given request to our configured homeserver.
@@ -483,6 +485,11 @@ class ProxyDaemon:
             request or should we use the path and re-encode it. Some may need
             their filters to be sanitized, this requires the parsed version of
             the path, otherwise we leave the path as is.
+            allow_redirects (bool, optional): If set to False, do not follow
+                redirects.
+            preserve_host (bool, optional): If set to True, do not delete Host
+                header before forwarding request. Required for OIDC
+                authentication through multiple reverse proxies.
         """
         if not session:
             if not self.default_session:
@@ -495,7 +502,9 @@ class ProxyDaemon:
         method = request.method
 
         headers = CIMultiDict(request.headers)
-        headers.pop("Host", None)
+
+        if not preserve_host:
+            headers.pop("Host", None)
 
         params = params or CIMultiDict(request.query)
 
@@ -517,6 +526,7 @@ class ProxyDaemon:
             data=data,
             params=params,
             headers=headers,
+            allow_redirects=allow_redirects,
             proxy=self.proxy,
             ssl=self.ssl,
         )
@@ -572,7 +582,7 @@ class ProxyDaemon:
         return user
 
     async def start_pan_client(
-        self, access_token, user, user_id, password, device_id=None
+        self, access_token, user_id, password, device_id=None, token=None
     ):
         client = ClientInfo(user_id, access_token)
         self.client_info[access_token] = client
@@ -599,18 +609,18 @@ class ProxyDaemon:
             media_info=self.media_info,
         )
 
-        if password == "":
+        if password is None and token is None:
             if device_id is None:
                 logger.warn(
                     "Empty password provided and device_id was also None, not "
                     "starting background sync client "
                 )
                 return
-            # If password is blank, we cannot login normally and must
+            # If there is no password or token, we cannot login normally and must
             # fall back to using the provided device_id.
             pan_client.restore_login(user_id, device_id, access_token)
         else:
-            response = await pan_client.login(password, "pantalaimon")
+            response = await pan_client.login(password, "pantalaimon", token=token)
 
             if not isinstance(response, LoginResponse):
                 await pan_client.close()
@@ -660,8 +670,12 @@ class ProxyDaemon:
                 status=500,
             )
 
+        type = body.get("type")
+        logger.debug(f"Executing {type} login")
+
         user = self._get_login_user(body)
-        password = body.get("password", "")
+        password = body.get("password")
+        token = body.get("token")
 
         logger.info(f"New user logging in: {user}")
 
@@ -682,11 +696,11 @@ class ProxyDaemon:
 
             if user_id and access_token:
                 logger.info(
-                    f"User: {user} successfully logged in, starting "
+                    f"User: {user_id} successfully logged in, starting "
                     f"a background sync client."
                 )
                 await self.start_pan_client(
-                    access_token, user, user_id, password, device_id
+                    access_token, user_id, password, device_id, token=token
                 )
 
         return web.Response(
@@ -695,6 +709,17 @@ class ProxyDaemon:
             headers=CORS_HEADERS,
             body=await response.read(),
         )
+
+    async def oidc(self, request):
+        try:
+            response = await self.forward_request(
+                request, use_raw_path=False, allow_redirects=False, preserve_host=True
+            )
+            location = response.headers["Location"]
+            logger.debug(f"Redirecting to {location}")
+            raise web.HTTPFound(location)
+        except ClientConnectionError as e:
+            return web.Response(status=500, text=str(e))
 
     @property
     def _missing_token(self):
