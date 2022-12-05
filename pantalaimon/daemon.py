@@ -1327,9 +1327,10 @@ class ProxyDaemon:
             return None, None
 
         client = next(iter(self.pan_clients.values()))
+        mxc = f"mxc://{server_name}/{media_id}"
 
         try:
-            response = await client.download(server_name, media_id, file_name)
+            response = await client.download(mxc=mxc, filename=file_name)
         except ClientConnectionError as e:
             raise e
 
@@ -1343,6 +1344,19 @@ class ProxyDaemon:
             decrypted_file = await loop.run_in_executor(
                 pool, decrypt_attachment, response.body, key, hash, media_info.iv
             )
+
+        try:
+            upload_info = self.upload_info[mxc]
+        except KeyError:
+            upload_info = self.store.load_upload(self.name, mxc)
+
+            if not upload_info:
+                logger.info(f"No upload info found for {server_name}/{media_id}")
+            else:
+                self.upload_info[mxc] = upload_info
+
+        if mxc in self.upload_info:
+            response.content_type = self.upload_info[mxc].mimetype
 
         return response, decrypted_file
 
@@ -1400,7 +1414,7 @@ class ProxyDaemon:
 
         return web.Response(
             status=response.transport_response.status,
-            content_type=response.transport_response.content_type,
+            content_type=response.content_type,
             headers=CORS_HEADERS,
             body=decrypted_file,
         )

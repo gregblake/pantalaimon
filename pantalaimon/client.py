@@ -281,11 +281,16 @@ class PanClient(AsyncClient):
         mxc_server = mxc.netloc.strip("/")
         mxc_path = mxc.path.strip("/")
 
-        logger.info(f"Adding media info for {mxc_server}/{mxc_path} to the store")
+        logger.info(
+            f"Adding media and upload info for {mxc_server}/{mxc_path} to the store"
+        )
 
         media = MediaInfo(mxc_server, mxc_path, event.key, event.iv, event.hashes)
         self.media_info[(mxc_server, mxc_path)] = media
         self.pan_store.save_media(self.server_name, media)
+        self.pan_store.save_upload(
+            self.server_name, event.url, event.body, event.mimetype
+        )
 
     @property
     def unable_to_decrypt(self):
@@ -830,6 +835,9 @@ class PanClient(AsyncClient):
             )
 
             if isinstance(decrypted_event, RoomEncryptedMedia):
+                # Clients like Element will attempt to decrypt the file again
+                # if content.file is present in the metadata.
+                decrypted_event.source["content"].pop("file", None)
                 self.store_event_media(decrypted_event)
 
                 decrypted_event.source["content"]["url"] = decrypted_event.url
