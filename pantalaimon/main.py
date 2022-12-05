@@ -118,14 +118,6 @@ async def init(data_dir, server_conf, send_queue, recv_queue):
                 "/_matrix/media/r0/download/{server_name}/{media_id}/{file_name}",
                 proxy.download,
             ),
-            web.post(
-                r"/_matrix/media/r0/upload",
-                proxy.upload,
-            ),
-            web.post(
-                r"/_matrix/media/v3/upload",
-                proxy.upload,
-            ),
             web.put(
                 r"/_matrix/client/r0/profile/{userId}/avatar_url",
                 proxy.profile,

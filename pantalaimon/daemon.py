@@ -1006,6 +1006,10 @@ class ProxyDaemon:
         except (JSONDecodeError, ContentTypeError):
             return self._not_json
 
+        # TEMPORARY: Do not encrypt attachments.
+        if content.get("msgtype") in ["m.image", "m.video", "m.audio", "m.file"]:
+            encrypt = False
+
         # Just forward the message.
         if not encrypt:
             content_msgtype = content.get("msgtype")
