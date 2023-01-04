@@ -36,10 +36,10 @@ from nio import (
     LoginResponse,
     OlmTrustError,
     SendRetryError,
-    DownloadResponse,
+    StreamResponse,
     UploadResponse,
 )
-from nio.crypto import decrypt_attachment
+from nio.crypto import async_decrypt_attachment
 
 from pantalaimon.client import (
     SEARCH_TERMS_SCHEMA,
@@ -559,7 +559,7 @@ class ProxyDaemon:
                 status=response.status,
                 content_type=response.content_type,
                 headers=CORS_HEADERS,
-                body=await response.read(),
+                body=response.content,
             )
         except ClientConnectionError as e:
             return web.Response(status=500, text=str(e))
@@ -923,15 +923,17 @@ class ProxyDaemon:
         if not upload_info or not media_info:
             raise NotDecryptedAvailableError
 
-        response, decrypted_file = await self._load_decrypted_file(
+        response, decrypted_file_generator = await self._load_decrypted_file(
             media_info.mxc_server, media_info.mxc_path, upload_info.filename
         )
 
-        if response is None and decrypted_file is None:
+        if response is None and decrypted_file_generator is None:
             raise NotDecryptedAvailableError
 
-        if not isinstance(response, DownloadResponse):
+        if not isinstance(response, StreamResponse):
             raise NotDecryptedAvailableError
+
+        decrypted_file = b"".join([chunk async for chunk in decrypted_file_generator])
 
         decrypted_upload, _ = await client.upload(
             data_provider=BufferedReader(BytesIO(decrypted_file)),
@@ -1330,20 +1332,18 @@ class ProxyDaemon:
         mxc = f"mxc://{server_name}/{media_id}"
 
         try:
-            response = await client.download(mxc=mxc, filename=file_name)
+            response = await client.stream(mxc=mxc, filename=file_name)
         except ClientConnectionError as e:
             raise e
 
-        if not isinstance(response, DownloadResponse):
+        if not isinstance(response, StreamResponse):
             return response, None
 
         logger.info(f"Decrypting media {server_name}/{media_id}")
 
-        loop = asyncio.get_running_loop()
-        with concurrent.futures.ProcessPoolExecutor() as pool:
-            decrypted_file = await loop.run_in_executor(
-                pool, decrypt_attachment, response.body, key, hash, media_info.iv
-            )
+        decrypted_file_generator = async_decrypt_attachment(
+            response.generator, key, hash, media_info.iv
+        )
 
         try:
             upload_info = self.upload_info[mxc]
@@ -1358,7 +1358,7 @@ class ProxyDaemon:
         if mxc in self.upload_info:
             response.content_type = self.upload_info[mxc].mimetype
 
-        return response, decrypted_file
+        return response, decrypted_file_generator
 
     async def profile(self, request):
         access_token = self.get_access_token(request)
@@ -1393,18 +1393,18 @@ class ProxyDaemon:
         file_name = request.match_info.get("file_name")
 
         try:
-            response, decrypted_file = await self._load_decrypted_file(
+            response, decrypted_file_generator = await self._load_decrypted_file(
                 server_name, media_id, file_name
             )
 
-            if response is None and decrypted_file is None:
+            if response is None and decrypted_file_generator is None:
                 return await self.forward_to_web(request)
         except ClientConnectionError as e:
             return web.Response(status=500, text=str(e))
         except KeyError:
             return await self.forward_to_web(request)
 
-        if not isinstance(response, DownloadResponse):
+        if not isinstance(response, StreamResponse):
             return web.Response(
                 status=response.transport_response.status,
                 content_type=response.transport_response.content_type,
@@ -1412,12 +1412,16 @@ class ProxyDaemon:
                 body=await response.transport_response.read(),
             )
 
-        return web.Response(
-            status=response.transport_response.status,
-            content_type=response.content_type,
-            headers=CORS_HEADERS,
-            body=decrypted_file,
+        stream_response = web.StreamResponse(
+            status=response.transport_response.status, headers=CORS_HEADERS
         )
+        stream_response.content_length = response.transport_response.content_length
+        stream_response.content_type = response.content_type
+        await stream_response.prepare(request)
+        async for chunk in decrypted_file_generator:
+            await stream_response.write(chunk)
+        await stream_response.write_eof()
+        return stream_response
 
     async def well_known(self, _):
         """Intercept well-known requests
