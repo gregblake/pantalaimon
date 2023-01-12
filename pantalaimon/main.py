@@ -73,6 +73,8 @@ async def init(data_dir, server_conf, send_queue, recv_queue):
             web.get("/_matrix/client/v3/login/sso/redirect/oidc-{idp_id}", proxy.oidc),
             web.get("/_matrix/client/r0/sync", proxy.sync),
             web.get("/_matrix/client/v3/sync", proxy.sync),
+            web.post("/_matrix/client/r0/createRoom", proxy.createRoom),
+            web.post("/_matrix/client/v3/createRoom", proxy.createRoom),
             web.post("/_matrix/client/r0/rooms/{room_id}/invite", proxy.invite),
             web.post("/_matrix/client/v3/rooms/{room_id}/invite", proxy.invite),
             web.get("/_matrix/client/r0/rooms/{room_id}/messages", proxy.messages),
