@@ -793,6 +793,7 @@ class ProxyDaemon:
 
             query["filter"] = sync_filter
 
+        await client.synced.wait()
         try:
             response = await self.forward_request(
                 request, params=query, token=client.access_token, use_raw_path=False
