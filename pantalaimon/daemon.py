@@ -769,6 +769,44 @@ class ProxyDaemon:
             logger.info("Decryption attempt timed out, decrypting with " "failures")
             return decryption_method(body, ignore_failures=True)
 
+    async def initialSync(self, request):
+        try:
+            response = await self.forward_request(request)
+        except ClientConnectionError as e:
+            return web.Response(status=500, text=str(e))
+
+        json_response = await response.json()
+        room_state = json_response.get("state")
+
+        if room_state and self._is_public(room_state):
+            access_token = self.get_access_token(request)
+
+            if not access_token:
+                return self._missing_token
+
+            client = await self._find_client(access_token)
+            if not client:
+                return self._unknown_token
+
+            room_id = request.match_info["room_id"]
+            client.populate_group_sessions(room_id)
+
+        return web.Response(
+            status=response.status,
+            content_type=response.content_type,
+            headers=CORS_HEADERS,
+            body=await response.read(),
+        )
+
+    def _is_public(self, room_state):
+        events = [s for s in room_state if s["type"] == "m.room.join_rules"]
+        if events:
+            content = events[0].get("content")
+            if content:
+                join_rule = content.get("join_rule")
+                return join_rule == "public"
+        return False
+
     async def sync(self, request):
         access_token = self.get_access_token(request)
 
