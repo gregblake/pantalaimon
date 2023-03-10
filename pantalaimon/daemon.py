@@ -905,6 +905,27 @@ class ProxyDaemon:
             body=await response.transport_response.read(),
         )
 
+    async def join(self, request):
+        access_token = self.get_access_token(request)
+
+        if not access_token:
+            return self._missing_token
+
+        client = await self._find_client(access_token)
+        if not client:
+            return self._unknown_token
+
+        room_id = request.match_info["room_id_or_alias"]
+
+        response = await client.join(room_id)
+
+        return web.Response(
+            status=response.transport_response.status,
+            content_type=response.transport_response.content_type,
+            headers=CORS_HEADERS,
+            body=await response.transport_response.read(),
+        )
+
     async def messages(self, request):
         access_token = self.get_access_token(request)
 

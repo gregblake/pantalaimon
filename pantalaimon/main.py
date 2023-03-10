@@ -83,6 +83,8 @@ async def init(data_dir, server_conf, send_queue, recv_queue):
             web.post("/_matrix/client/v3/createRoom", proxy.createRoom),
             web.post("/_matrix/client/r0/rooms/{room_id}/invite", proxy.invite),
             web.post("/_matrix/client/v3/rooms/{room_id}/invite", proxy.invite),
+            web.post("/_matrix/client/r0/join/{room_id_or_alias}", proxy.join),
+            web.post("/_matrix/client/v3/join/{room_id_or_alias}", proxy.join),
             web.get("/_matrix/client/r0/rooms/{room_id}/messages", proxy.messages),
             web.get("/_matrix/client/v3/rooms/{room_id}/messages", proxy.messages),
             web.put(
