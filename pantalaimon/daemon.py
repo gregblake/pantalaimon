@@ -650,6 +650,39 @@ class ProxyDaemon:
 
         pan_client.start_loop()
 
+    async def _msc3882_feature_enabled(self):
+        if not self.default_session:
+            self.default_session = ClientSession()
+        session = self.default_session
+
+        assert session
+
+        versions_path = f"{self.homeserver_url}/_matrix/client/versions"
+
+        async with session.get(versions_path) as resp:
+            json = await resp.json()
+            unstable_features = json.get("unstable_features", {})
+            return unstable_features.get("org.matrix.msc3882") == True
+
+    # NOTE: this method requires the homeserver to enable unstable feature org.matrix.msc3882
+    # TODO: update the path to /v1/login/get_token when org.matrix.msc3882 is stable
+    async def _get_token(self, access_token):
+        assert access_token
+
+        if not self.default_session:
+            self.default_session = ClientSession()
+        session = self.default_session
+
+        assert session
+
+        get_token_path = f"{self.homeserver_url}/_matrix/client/unstable/org.matrix.msc3882/login/token"
+
+        async with session.post(
+            get_token_path, json={}, headers={"Authorization": f"Bearer {access_token}"}
+        ) as resp:
+            json = await resp.json()
+            return json.get("login_token")
+
     async def login(self, request):
         try:
             body = await request.json()
@@ -675,7 +708,6 @@ class ProxyDaemon:
 
         user = self._get_login_user(body)
         password = body.get("password")
-        token = body.get("token")
 
         logger.info(f"New user logging in: {user}")
 
@@ -692,6 +724,12 @@ class ProxyDaemon:
         if response.status == 200 and json_response:
             user_id = json_response.get("user_id", None)
             access_token = json_response.get("access_token", None)
+
+            if await self._msc3882_feature_enabled():
+                token = await self._get_token(access_token)
+            else:
+                token = body.get("token")
+
             device_id = json_response.get("device_id", None)
 
             if user_id and access_token:
