@@ -28,6 +28,7 @@ import attr
 import keyring
 from aiohttp import ClientSession, web
 from aiohttp.client_exceptions import ClientConnectionError, ContentTypeError
+from aiohttp.connector import TCPConnector
 from jsonschema import ValidationError
 from multidict import CIMultiDict
 from nio import (
@@ -179,7 +180,8 @@ class ProxyDaemon:
         client_info = self.client_info.get(access_token, None)
 
         if not client_info:
-            async with aiohttp.ClientSession() as session:
+            limitless_tcp_connector = TCPConnector(limit=0)
+            async with ClientSession(connector=limitless_tcp_connector) as session:
                 try:
                     method, path = Api.whoami(access_token)
                     resp = await session.request(
@@ -493,7 +495,8 @@ class ProxyDaemon:
         """
         if not session:
             if not self.default_session:
-                self.default_session = ClientSession()
+                limitless_tcp_connector = TCPConnector(limit=0)
+                self.default_session = ClientSession(connector=limitless_tcp_connector)
             session = self.default_session
 
         assert session
@@ -652,7 +655,8 @@ class ProxyDaemon:
 
     async def _msc3882_feature_enabled(self):
         if not self.default_session:
-            self.default_session = ClientSession()
+            limitless_tcp_connector = TCPConnector(limit=0)
+            self.default_session = ClientSession(connector=limitless_tcp_connector)
         session = self.default_session
 
         assert session
@@ -670,7 +674,8 @@ class ProxyDaemon:
         assert access_token
 
         if not self.default_session:
-            self.default_session = ClientSession()
+            limitless_tcp_connector = TCPConnector(limit=0)
+            self.default_session = ClientSession(connector=limitless_tcp_connector)
         session = self.default_session
 
         assert session
