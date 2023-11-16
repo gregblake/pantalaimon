@@ -124,6 +124,7 @@ class ServerConfig:
             requests in seconds.
         drop_old_keys (bool): Should Pantalaimon only keep the most recent
             decryption key around.
+        unencrypted_mentions (bool): Should Pantalaimon included unencrypted mentions metadata when it creates message events.
     """
 
     name = attr.ib(type=str)
@@ -141,6 +142,7 @@ class ServerConfig:
     indexing_batch_size = attr.ib(type=int, default=100)
     history_fetch_delay = attr.ib(type=int, default=3)
     drop_old_keys = attr.ib(type=bool, default=False)
+    unencrypted_mentions = attr.ib(type=bool, default=False)
 
 
 @attr.s
@@ -153,6 +155,7 @@ class PanConfig:
         filename (str): The name of the file that we should read.
         debug_encryption (bool): Should debug logs be enabled for the Matrix
             encryption support.
+        unencrypted_mentions (bool): Should Pantalaimon included unencrypted mentions metadata when it creates message events.
     """
 
     config_file = attr.ib()
@@ -161,6 +164,7 @@ class PanConfig:
     debug_encryption = attr.ib(type=bool, default=None)
     notifications = attr.ib(default=None)
     servers = attr.ib(init=False, default=attr.Factory(dict))
+    unencrypted_mentions = attr.ib(type=bool, default=None)
 
     def read(self):
         """Read the configuration file.
@@ -179,6 +183,9 @@ class PanConfig:
 
         if self.notifications is None:
             self.notifications = config["Default"].getboolean("Notifications")
+
+        if self.unencrypted_mentions is None:
+            self.unencrypted_mentions = config["Default"].getboolean("UnencryptedMentions")
 
         self.debug_encryption = config["Default"].getboolean("DebugEncryption")
 
@@ -205,6 +212,7 @@ class PanConfig:
                 proxy = section.geturl("Proxy")
                 search_requests = section.getboolean("SearchRequests")
                 index_encrypted_only = section.getboolean("IndexEncryptedOnly")
+                unencrypted_mentions = section.getboolean("UnencryptedMentions")
 
                 indexing_batch_size = section.getint("IndexingBatchSize")
 
@@ -249,6 +257,7 @@ class PanConfig:
                     indexing_batch_size,
                     history_fetch_delay / 1000,
                     drop_old_keys,
+                    unencrypted_mentions,
                 )
 
                 self.servers[section_name] = server_conf
